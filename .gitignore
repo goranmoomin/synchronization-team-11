@@ -60,6 +60,7 @@ modules.builtin
 /vmlinuz
 /System.map
 /Module.markers
+/compile_commands.json
 
 #
 # RPM spec file (make rpm-pkg)
