@@ -736,9 +736,15 @@ __SYSCALL(__NR_statx,     sys_statx)
 __SC_COMP(__NR_io_pgetevents, sys_io_pgetevents, compat_sys_io_pgetevents)
 #define __NR_rseq 293
 __SYSCALL(__NR_rseq, sys_rseq)
+#define __NR_set_orientation 294
+__SYSCALL(__NR_set_orientation, sys_set_orientation)
+#define __NR_rotation_lock 295
+__SYSCALL(__NR_rotation_lock, sys_rotation_lock)
+#define __NR_rotation_unlock 296
+__SYSCALL(__NR_rotation_unlock, sys_rotation_unlock)
 
 #undef __NR_syscalls
-#define __NR_syscalls 294
+#define __NR_syscalls 297
 
 /*
  * 32 bit systems traditionally used different
