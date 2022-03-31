@@ -18,29 +18,86 @@ static struct rotlock *next_rotlock = NULL;
 static DEFINE_MUTEX(new_rotlock_id_lock);
 static long new_rotlock_id = 0L;
 
+#define VALID_ORIENTATION(low, high, ori)                                      \
+	(low) <= (high) ? ((low) <= (ori) && (ori) <= (high)) :                \
+			  ((low) <= (ori) && (ori) < 360) ||                   \
+				  (0 <= (ori) && (ori) <= (high))
+
+#define OVERLAP_INTERVAL(l1, h1, l2, h2)                                       \
+	(l1) <= (h1) ? ((l2) <= (h2) ? (l2) <= (h1) && (l1) <= (h2) :          \
+				       (l1) <= (h2) || (l2) <= (h1)) :         \
+		       ((l2) <= (h2) ? (l2) <= (h1) || (l1) <= (h2) : 1)
+
 static void update_next_rotlock(void)
 {
-	struct rotlock *rl;
+	struct rotlock *rl, *aux_rl, *candidate = NULL;
 
-	mutex_lock(&orientation_lock);
 	mutex_lock(&rotlock_list_lock);
 
 	list_for_each_entry (rl, &rotlock_list, list) {
 		spin_lock(&rl->lock);
-		if (rl->state == ROTLOCK_WAITING && rl->low <= orientation &&
-		    rl->high >= orientation) {
-			spin_unlock(&rl->lock);
-			break;
-		}
-		spin_unlock(&rl->lock);
 	}
 
-	mutex_lock(&next_rotlock_lock);
-	next_rotlock = &rl->list != &rotlock_list ? rl : NULL;
-	mutex_unlock(&next_rotlock_lock);
+	mutex_lock(&orientation_lock);
 
-	mutex_unlock(&rotlock_list_lock);
+	list_for_each_entry (rl, &rotlock_list, list) {
+		if (!(rl->type == ROT_WRITE && rl->state == ROTLOCK_WAITING)) {
+			continue;
+		}
+		if (VALID_ORIENTATION(rl->low, rl->high, orientation)) {
+			candidate = rl;
+			list_for_each_entry (aux_rl, &rotlock_list, list) {
+				if (!(aux_rl->state == ROTLOCK_ACQUIRED)) {
+					continue;
+				}
+				if ((OVERLAP_INTERVAL(rl->low, rl->high,
+						      aux_rl->low,
+						      aux_rl->high))) {
+					candidate = NULL;
+					break;
+				}
+			}
+			if (candidate) {
+				goto exit;
+			}
+		}
+	}
+
+	list_for_each_entry (rl, &rotlock_list, list) {
+		if (!(rl->type == ROT_READ && rl->state == ROTLOCK_WAITING)) {
+			continue;
+		}
+		if (VALID_ORIENTATION(rl->low, rl->high, orientation)) {
+			candidate = rl;
+			list_for_each_entry (aux_rl, &rotlock_list, list) {
+				if (!(aux_rl->type == ROT_WRITE &&
+				      aux_rl->state == ROTLOCK_ACQUIRED)) {
+					continue;
+				}
+				if ((OVERLAP_INTERVAL(rl->low, rl->high,
+						      aux_rl->low,
+						      aux_rl->high))) {
+					candidate = NULL;
+					break;
+				}
+			}
+			if (candidate) {
+				goto exit;
+			}
+		}
+	}
+
+exit:
 	mutex_unlock(&orientation_lock);
+
+	list_for_each_entry_reverse (rl, &rotlock_list, list) {
+		spin_unlock(&rl->lock);
+	}
+	mutex_unlock(&rotlock_list_lock);
+
+	mutex_lock(&next_rotlock_lock);
+	next_rotlock = candidate;
+	mutex_unlock(&next_rotlock_lock);
 }
 
 static int is_next(struct rotlock *rl)
