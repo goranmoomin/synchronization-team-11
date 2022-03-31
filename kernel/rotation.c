@@ -71,7 +71,11 @@ static void update_next_rotlock(void)
 			candidate = rl;
 			list_for_each_entry (aux_rl, &rotlock_list, list) {
 				if (!(aux_rl->type == ROT_WRITE &&
-				      aux_rl->state == ROTLOCK_ACQUIRED)) {
+				      (aux_rl->state == ROTLOCK_ACQUIRED ||
+				       (aux_rl->state == ROTLOCK_WAITING &&
+					VALID_ORIENTATION(aux_rl->low,
+							  aux_rl->high,
+							  orientation))))) {
 					continue;
 				}
 				if ((OVERLAP_INTERVAL(rl->low, rl->high,
@@ -141,7 +145,9 @@ SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 	if (!newlock)
 		return -ENOMEM;
 
+	mutex_lock(&new_rotlock_id_lock);
 	newlock->id = new_rotlock_id++;
+	mutex_unlock(&new_rotlock_id_lock);
 
 	spin_lock_init(&newlock->lock);
 
@@ -152,7 +158,7 @@ SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 	newlock->pid = current->pid;
 
 	mutex_lock(&rotlock_list_lock);
-	list_add(&newlock->list, &rotlock_list);
+	list_add_tail(&newlock->list, &rotlock_list);
 	mutex_unlock(&rotlock_list_lock);
 
 	update_next_rotlock();
