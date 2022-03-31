@@ -68,6 +68,8 @@
 #include <asm/pgtable.h>
 #include <asm/mmu_context.h>
 
+#include <linux/rotation.h>
+
 static void __unhash_process(struct task_struct *p, bool group_dead)
 {
 	nr_threads--;
@@ -875,6 +877,11 @@ void __noreturn do_exit(long code)
 	exit_task_namespaces(tsk);
 	exit_task_work(tsk);
 	exit_thread(tsk);
+
+	/*
+	 * Custom rotation exit code
+	 */
+	exit_rotation(tsk);
 
 	/*
 	 * Flush inherited counters to the parent - before the parent

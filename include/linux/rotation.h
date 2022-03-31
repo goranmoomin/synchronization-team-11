@@ -2,28 +2,26 @@
 #define _LINUX_ROTATION_H
 
 #include <linux/types.h>
+#include <linux/spinlock_types.h>
 
 #define ROT_READ 0
 #define ROT_WRITE 1
 
-extern struct mutex rotlock_list_lock;
-extern struct list_head rotlock_list;
-
-extern struct mutex rotlock_waitlist_lock;
-extern struct list_head rotlock_waitlist;
-
-extern struct mutex next_rotlock_id_lock;
-extern long next_rotlock_id;
+enum rotlock_state { ROTLOCK_WAITING, ROTLOCK_ACQUIRED };
 
 struct rotlock {
 	long id;
 
+	spinlock_t lock;
 	struct list_head list;
 
+	enum rotlock_state state;
 	int type;
 	int low;
 	int high;
 	pid_t pid;
 };
+
+void exit_rotation(struct task_struct *tsk);
 
 #endif /* _LINUX_ROTATION_H */
