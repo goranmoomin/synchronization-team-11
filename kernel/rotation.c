@@ -6,16 +6,16 @@
 
 static DECLARE_WAIT_QUEUE_HEAD(wq);
 
-static DEFINE_MUTEX(orientation_lock);
+static DEFINE_RWLOCK(orientation_lock);
 static int orientation = 0;
 
-static DEFINE_MUTEX(rotlock_list_lock);
+static DEFINE_RWLOCK(rotlock_list_lock);
 static LIST_HEAD(rotlock_list);
 
-static DEFINE_MUTEX(next_rotlock_lock);
+static DEFINE_RWLOCK(next_rotlock_lock);
 static struct rotlock *next_rotlock = NULL;
 
-static DEFINE_MUTEX(new_rotlock_id_lock);
+static DEFINE_SPINLOCK(new_rotlock_id_lock);
 static long new_rotlock_id = 0L;
 
 #define VALID_ORIENTATION(low, high, ori)                                      \
@@ -32,13 +32,13 @@ static void update_next_rotlock(void)
 {
 	struct rotlock *rl, *aux_rl, *candidate = NULL;
 
-	mutex_lock(&rotlock_list_lock);
+	read_lock(&rotlock_list_lock);
 
 	list_for_each_entry (rl, &rotlock_list, list) {
 		spin_lock(&rl->lock);
 	}
 
-	mutex_lock(&orientation_lock);
+	read_lock(&orientation_lock);
 
 	list_for_each_entry (rl, &rotlock_list, list) {
 		if (!(rl->type == ROT_WRITE && rl->state == ROTLOCK_WAITING)) {
@@ -92,25 +92,25 @@ static void update_next_rotlock(void)
 	}
 
 exit:
-	mutex_unlock(&orientation_lock);
+	write_lock(&next_rotlock_lock);
+	next_rotlock = candidate;
+	write_unlock(&next_rotlock_lock);
+
+	read_unlock(&orientation_lock);
 
 	list_for_each_entry_reverse (rl, &rotlock_list, list) {
 		spin_unlock(&rl->lock);
 	}
-	mutex_unlock(&rotlock_list_lock);
-
-	mutex_lock(&next_rotlock_lock);
-	next_rotlock = candidate;
-	mutex_unlock(&next_rotlock_lock);
+	read_unlock(&rotlock_list_lock);
 }
 
 static int is_next(struct rotlock *rl)
 {
 	int retval;
 
-	mutex_lock(&next_rotlock_lock);
+	read_lock(&next_rotlock_lock);
 	retval = next_rotlock == rl;
-	mutex_unlock(&next_rotlock_lock);
+	read_unlock(&next_rotlock_lock);
 
 	return retval;
 }
@@ -122,9 +122,9 @@ SYSCALL_DEFINE1(set_orientation, int, degree)
 
 	printk(KERN_INFO "set_orientation degree=%d\n", degree);
 
-	mutex_lock(&orientation_lock);
+	write_lock(&orientation_lock);
 	orientation = degree;
-	mutex_unlock(&orientation_lock);
+	write_unlock(&orientation_lock);
 
 	update_next_rotlock();
 	wake_up(&wq);
@@ -145,9 +145,9 @@ SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 	if (!newlock)
 		return -ENOMEM;
 
-	mutex_lock(&new_rotlock_id_lock);
+	spin_lock(&new_rotlock_id_lock);
 	newlock->id = new_rotlock_id++;
-	mutex_unlock(&new_rotlock_id_lock);
+	spin_unlock(&new_rotlock_id_lock);
 
 	spin_lock_init(&newlock->lock);
 
@@ -157,9 +157,9 @@ SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 	newlock->high = high;
 	newlock->pid = current->pid;
 
-	mutex_lock(&rotlock_list_lock);
+	write_lock(&rotlock_list_lock);
 	list_add_tail(&newlock->list, &rotlock_list);
-	mutex_unlock(&rotlock_list_lock);
+	write_unlock(&rotlock_list_lock);
 
 	update_next_rotlock();
 	wake_up(&wq);
@@ -167,17 +167,17 @@ SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 	for (;;) {
 		wait_event(wq, is_next(newlock));
 
-		mutex_lock(&next_rotlock_lock);
+		read_lock(&next_rotlock_lock);
 		if (next_rotlock == newlock)
 			break;
-		mutex_unlock(&next_rotlock_lock);
+		read_unlock(&next_rotlock_lock);
 	}
 
 	spin_lock(&newlock->lock);
 	newlock->state = ROTLOCK_ACQUIRED;
 	spin_unlock(&newlock->lock);
 
-	mutex_unlock(&next_rotlock_lock);
+	read_unlock(&next_rotlock_lock);
 
 	update_next_rotlock();
 	wake_up(&wq);
@@ -193,7 +193,7 @@ SYSCALL_DEFINE1(rotation_unlock, long, id)
 	if (id < 0)
 		return -EINVAL;
 
-	mutex_lock(&rotlock_list_lock);
+	write_lock(&rotlock_list_lock);
 	list_for_each_entry_safe (rl, nrl, &rotlock_list, list) {
 		if (rl->id == id) {
 			if (rl->pid != current->pid) {
@@ -212,7 +212,7 @@ SYSCALL_DEFINE1(rotation_unlock, long, id)
 		rl = NULL;
 	}
 
-	mutex_unlock(&rotlock_list_lock);
+	write_unlock(&rotlock_list_lock);
 
 	update_next_rotlock();
 	wake_up(&wq);
@@ -229,19 +229,22 @@ void exit_rotation(struct task_struct *tsk)
 
 	LIST_HEAD(rotlock_deleted_list);
 
-	mutex_lock(&rotlock_list_lock);
+	write_lock(&rotlock_list_lock);
 	list_for_each_entry_safe (rl, nrl, &rotlock_list, list) {
 		if (rl->pid == tsk->pid) {
 			list_del(&rl->list);
 			list_add(&rl->list, &rotlock_deleted_list);
 		}
 	}
-	mutex_unlock(&rotlock_list_lock);
+	write_unlock(&rotlock_list_lock);
 
 	list_for_each_entry_safe (rl, nrl, &rotlock_deleted_list, list) {
 		list_del(&rl->list);
 		printk(KERN_INFO "rotlock %ld is freed\n", rl->id);
 		kfree(rl);
 	}
+
+	update_next_rotlock();
+	wake_up(&wq);
 }
 
