@@ -32,6 +32,7 @@ static void update_next_rotlock(void)
 {
 	struct rotlock *rl, *aux_rl, *candidate = NULL;
 
+	write_lock(&next_rotlock_lock);
 	read_lock(&rotlock_list_lock);
 
 	list_for_each_entry (rl, &rotlock_list, list) {
@@ -92,9 +93,7 @@ static void update_next_rotlock(void)
 	}
 
 exit:
-	write_lock(&next_rotlock_lock);
 	next_rotlock = candidate;
-	write_unlock(&next_rotlock_lock);
 
 	read_unlock(&orientation_lock);
 
@@ -102,6 +101,8 @@ exit:
 		spin_unlock(&rl->lock);
 	}
 	read_unlock(&rotlock_list_lock);
+
+	write_unlock(&next_rotlock_lock);
 }
 
 static int is_next(struct rotlock *rl)
