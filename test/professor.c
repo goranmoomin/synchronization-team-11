@@ -15,7 +15,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	long id;
-	int val = 0;
+	int val = atoi(argv[1]);
 	for (;;) {
 		FILE *f = NULL;
 		id = syscall(NR_ROTATION_LOCK, 0, 180, ROT_WRITE);

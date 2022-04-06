@@ -8,6 +8,8 @@
 #define NR_ROTATION_LOCK 295
 #define NR_ROTATION_UNLOCK 296
 
+void factorize(int n);
+
 int main(int argc, char **argv)
 {
 	if (argc != 3) {
@@ -30,7 +32,26 @@ int main(int argc, char **argv)
 		if (f) {
 			fscanf(f, "%d", &val);
 			fclose(f);
-			printf("student-%d-%d: %d\n", low, high, val);
+			printf("student-%d-%d: %d = ", low, high, val);
+
+			if (val == 1) {
+				printf("1");
+			}
+
+			for (int i = 2; i * i <= val;) {
+				if (val % i) {
+					i++;
+				} else {
+					val /= i;
+					printf("%d%s", i,
+					       val == 1 ? "" : " * ");
+				}
+			}
+
+			if (val > 1) {
+				printf("%d", val);
+			}
+			printf("\n");
 		}
 		syscall(NR_ROTATION_UNLOCK, id);
 	}
