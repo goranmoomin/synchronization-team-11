@@ -110,10 +110,9 @@ static int is_acquired(struct rotlock *rl)
 
 SYSCALL_DEFINE1(set_orientation, int, degree)
 {
+	printk(KERN_INFO "set_orientation degree=%d\n", degree);
 	if (degree < 0 || degree >= 360)
 		return -EINVAL;
-
-	printk(KERN_INFO "set_orientation degree=%d\n", degree);
 
 	write_lock(&orientation_lock);
 	orientation = degree;
@@ -127,6 +126,9 @@ SYSCALL_DEFINE1(set_orientation, int, degree)
 SYSCALL_DEFINE3(rotation_lock, int, low, int, high, int, type)
 {
 	struct rotlock *newlock;
+
+	printk(KERN_INFO "rotation_lock low=%d high=%d type=%d\n", low, high,
+	       type);
 
 	if (low < 0 || low >= 360 || high < 0 || high >= 360 ||
 	    (type != ROT_READ && type != ROT_WRITE)) {
@@ -165,6 +167,8 @@ SYSCALL_DEFINE1(rotation_unlock, long, id)
 	struct rotlock *rl, *nrl;
 	long retval = -EINVAL;
 
+	printk(KERN_INFO "rotation_unlock id=%ld\n", id);
+
 	if (id < 0)
 		return -EINVAL;
 
@@ -188,8 +192,7 @@ SYSCALL_DEFINE1(rotation_unlock, long, id)
 		}
 	}
 
-	if (&rl->list == &rotlock_list) {
-		retval = -EINVAL;
+	if (retval) {
 		rl = NULL;
 	}
 
@@ -198,7 +201,6 @@ SYSCALL_DEFINE1(rotation_unlock, long, id)
 	update_rotlocks();
 
 	kfree(rl);
-	printk(KERN_INFO "Dobby is free :)\n");
 
 	return retval;
 }
@@ -220,7 +222,6 @@ void exit_rotation(struct task_struct *tsk)
 
 	list_for_each_entry_safe (rl, nrl, &rotlock_deleted_list, list) {
 		list_del(&rl->list);
-		printk(KERN_INFO "rotlock %ld is freed\n", rl->id);
 		kfree(rl);
 	}
 
