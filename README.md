@@ -2,11 +2,31 @@
 
 ## Building the project
 
-TODO
+The project can be built in a conventional way; the usual sequence of
+`build-rpi3.sh`, `./setup-images.sh`, and `./qemu.sh` builds and boot
+up from the built kernel and the tizen userspace.
+
+The test programs in the `test` directory must be compiled with
+`aarch64-linux-gnu-gcc` with the `-static` option, as we have
+implemented the syscalls as 64-bit only.
 
 ## Implementation overview
 
-TLDR:
+The following files were modified:
+
+- `include/linux/rotation.h`:
+  - define the types `struct rotlock` and `enum rotlock_state`.
+  - declare `exit_rotation` for cleanup.
+- `kernel/exit.c`:
+  - add call to `exit_rotation` in `do_exit`.
+- `kernel/rotation.c`:
+  - declare all relevant variables that hold the rotlocks, the locks
+    to protect them, etc.
+  - implement the `update_rotlocks` function.
+  - implement the syscalls `set_orientation`, `rotation_lock`, and
+    `rotation_unlock`.
+
+The overall implementation works as described below:
 
 - The kernel represents all rotation locks as a linked list of `struct
   rotlock` instances, `rotlock_list`.
@@ -16,6 +36,8 @@ TLDR:
   `update_rotlocks` call.
 - Each task checks whether the rotlock it is waiting for is activated
   or not on wake up.
+
+Below are additional explanations on the details.
 
 ### The structure `struct rotlock`
 
@@ -30,10 +52,10 @@ whether the rotlock is acquired or not with a `enum rotlock_state`.
 The value is either `ROTLOCK_WAITING` or `ROTLOCK_ACQUIRED`.
 
 The mutable properties are protected from races with the spinlock
-property `lock`. In practice, the `list` property only gets modified
-when the lock is unreachable from other tasks (no task can have nor
-get a reference to the rotlock instance), so the `lock` is only used
-for protecting the `state` property.
+property `lock`. In practice, the only case the `list` property can
+get modified concurrently is when the `rotlock_list` gets edited.
+Since this case is protected by the lock for the list itself, the
+`lock` is only used for protecting the `state` property.
 
 ### Updating lock states in `update_rotlocks`
 
@@ -104,7 +126,7 @@ Notice that the only requirement here is that `update_rotlocks` gets
 called on **any future point** after the two states change; in fact,
 we believe that having a work queue and asynchronously executing
 `update_rotlocks` will work as well. To go further, we might also be
-able to avoid superflous updates by only adding the update request to
+able to avoid superfluous updates by only adding the update request to
 the work queue when no update request is queued. However, we decided
 to simplify the implementation at the cost of throughput and
 synchronously call the function directly.
@@ -137,7 +159,7 @@ Our implementation does also behave that if a syscall has returned,
 the next syscall will have already seen the effects from the previous
 syscall (by synchronously updating the rotlock states). For example,
 if a program has called `rotation_unlock` from some thread and has
-already returned, out implementation behaves as if all possible
+already returned, our implementation behaves as if all possible
 rotlock state updates that could have happened from the unlock has
 already happened. This means that a sequence of non-overlapping
 syscalls starting from the same state will have deterministic behavior
@@ -147,7 +169,7 @@ the specification.
 
 ### Miscellaneous implementation details
 
-#### Why have a spinlock for each rotlock?
+#### Why use a spinlock for each rotlock?
 
 While waiting in the blocking `rotation_lock` syscall, the kernel
 cannot hold a lock while sleeping as it will deadlock. Hence each time
@@ -156,21 +178,34 @@ rotlock’s state; to prevent excessive blocking, we implemented a
 fine-grained locking system with each rotlock having a spinlock to
 protect its own mutable state.
 
-Using a spinlock is expected to have performance advantages compared
-to more heavy locks when the syscalls are called relatively
-infrequently, and multiple locks are in a waiting state, periodically
-checking if it is acquired. We believe that most workloads for the
-implemented syscalls will follow this pattern – it is generally quite
-hard for the rotlock to be acquired, so we expect that rotlocks will
-be waited quite a lot.
+Using per-rotlock spinlocks allows checking state in `rotation_lock`
+much lightweight at a small performance cost in `update_rotlocks`.
+Since `is_acquired` gets checked for every waiting rotlock in the
+whole system on each `update_rotlocks` call, we believe that this is a
+good tradeoff; it is quite hard for a rotlock to be acquired, so we
+expect many rotlocks to be waiting for most workloads.
 
 ### Possible improvements
 
-TODO
+#### Performance
 
-- performance
-- ESYSRESTART
+We currently use a very simplistic implementation of iterating the
+whole global list to update the rotlock states; this probably can be
+optimized with a more careful data structre design to store the
+rotlocks. Sorting the rotlock list or having a separate list of
+activated rotlocks, maintaining a separate cache indexed by
+orientation to quickly check if specific ranges are locked or not were
+considered but was not implemented due to the lack of time.
 
-### Testing
+#### Interruptible, restartable syscalls
 
-TODO
+The current `rotation_lock` syscall goes to an uninterruptible sleep
+until the rotlock gets acquired; this effectively freezes the whole
+process, preventing any signals to get to the process, etc. To avoid
+this, `wait_event_interruptible` can be used instead of `wait_event`;
+if the wait was interrupted, removing the new rotlock from the rotlock
+list and updating the rotlock states again would have been sufficient.
+Additionally, by returning `-ESYSRESTART`, we could have also
+automatically restarted the syscall. Unfortunately, we did not check
+correctness rigorously enough for the above solution; we did not
+implement this specific feature due to correctness concerns.
