@@ -41,9 +41,9 @@ Below are additional explanations on the details.
 
 ### The structure `struct rotlock`
 
-The structrue `struct rotlock` is the representation of the rotation
+The structure `struct rotlock` is the representation of the rotation
 lock in the kernel. The properties `id`, `type`, `low`, `high`, and
-`pid` represent what the names suggests; they are immutable, and hence
+`pid` represent what the names suggest; they are immutable, and hence
 can be read directly without any protection.
 
 The mutable property `list` is a `struct list_head` to help creating a
@@ -76,7 +76,7 @@ updates the state from waiting to acquired with the following logic:
 
 - mark all syscalls in the wait queue `wq` as runnable
   (`wake_up(&wq)`) to wake up syscalls waiting for the rotlock to be
-  aquired.
+  acquired.
 
 The logic ensures that writer starvation cannot happen by only
 acquiring read rotlocks when there are no waiting valid write
@@ -107,7 +107,7 @@ state cannot exit. This dramatically simplifies task cleanup: grabbing
 the lock on `rotlock_list`, removing all rotlocks associated with the
 specific task, and freeing them is sufficient.
 
-`exit_rotation` is called from the task cleaup function `do_exit` in
+`exit_rotation` is called from the task cleanup function `do_exit` in
 `kernel/exit.c`.
 
 ### Implementation correctness
@@ -191,7 +191,7 @@ expect many rotlocks to be waiting for most workloads.
 
 We currently use a very simplistic implementation of iterating the
 whole global list to update the rotlock states; this probably can be
-optimized with a more careful data structre design to store the
+optimized with a more careful data structure design to store the
 rotlocks. Sorting the rotlock list or having a separate list of
 activated rotlocks, maintaining a separate cache indexed by
 orientation to quickly check if specific ranges are locked or not were
