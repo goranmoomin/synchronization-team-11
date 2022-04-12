@@ -4,7 +4,7 @@
 
 The project can be built in a conventional way; the usual sequence of
 `build-rpi3.sh`, `./setup-images.sh`, and `./qemu.sh` builds and boot
-up from the built kernel and the tizen userspace.
+up from the built kernel and the Tizen userspace.
 
 The test programs in the `test` directory must be compiled with
 `aarch64-linux-gnu-gcc` with the `-static` option, as we have
@@ -18,7 +18,7 @@ The following files were modified:
   - define the types `struct rotlock` and `enum rotlock_state`.
   - declare `exit_rotation` for cleanup.
 - `kernel/exit.c`:
-  - add call to `exit_rotation` in `do_exit`.
+  - add a call to `exit_rotation` in `do_exit`.
 - `kernel/rotation.c`:
   - declare all relevant variables that hold the rotlocks, the locks
     to protect them, etc.
@@ -37,7 +37,7 @@ The overall implementation works as described below:
 - Each task checks whether the rotlock it is waiting for is activated
   or not on wake up.
 
-Below are additional explanations on the details.
+Below are additional explanations of the details.
 
 ### The structure `struct rotlock`
 
@@ -46,9 +46,9 @@ lock in the kernel. The properties `id`, `type`, `low`, `high`, and
 `pid` represent what the names suggest; they are immutable, and hence
 can be read directly without any protection.
 
-The mutable property `list` is a `struct list_head` to help creating a
+The mutable property `list` is a `struct list_head` to help create a
 linked list of rotlocks. The mutable property `state` represents
-whether the rotlock is acquired or not with a `enum rotlock_state`.
+whether the rotlock is acquired or not with an `enum rotlock_state`.
 The value is either `ROTLOCK_WAITING` or `ROTLOCK_ACQUIRED`.
 
 The mutable properties are protected from races with the spinlock
@@ -84,13 +84,13 @@ rotlocks.
 
 ### Implementation of `rotation_lock` and `rotation_unlock`
 
-The syscalls itself are quite simple. `rotation_lock` simply
+The syscalls themselves are quite simple. `rotation_lock` simply
 
 - creates a new `struct rotlock` instance on the heap, handling errors
   appropriately…
 - locks and adds the rotlock instance to the list…
 - calls `update_rotlocks` since `rotlock_list` has changed…
-- and waits until the rotlock’s state gets acquired.
+- and waits until the rotlock gets acquired.
 
 Similarly, `rotation_unlock` simply
 
@@ -132,27 +132,27 @@ to simplify the implementation at the cost of throughput and
 synchronously call the function directly.
 
 Also noteworthy to mention is that the implementation assumes that not
-all value updates needs to get seen by the locks. For example, in our
+all value updates need to get seen by the locks. For example, in our
 implementation, if the syscall `set_orientation` gets called by two
 processes at the same time, the `update_rotlocks` call after the first
 orientation update might get blocked until the second orientation
-update finishes (and is waiting for the `update_rotlocks` call). Same
-goes to lock and unlock; for example, if multiple unlocks happen in
-the same time, the `update_rotlocks` call might get called after the
-two unlocks, which results might differ from when the
+update finishes (and is waiting for the `update_rotlocks` call). The
+same goes to lock and unlock; for example, if multiple unlocks happen
+at the same time, the `update_rotlocks` call might get called after
+the two unlocks, which results might differ from when the
 `update_rotlocks` gets also called between the two unlocks.
 
 Our understanding of the spec is that this is fine and permitted;
-both the spec and clarifications on the spec only mentions
-requirements on whether the rotlock can be acquired or not; there are
-no hard requirements on whether the rotlock **must** be acquired.
+both the spec and clarifications on the spec only mention requirements
+on whether the rotlock can be acquired or not; there are no hard
+requirements on whether the rotlock **must** be acquired.
 
 Indeed, any requirements on whether the rotlock must be acquired would
-require for all rotlock-related syscalls to have some determined
-order, crushing any performance advantage of multi-core systems
-without benefit. Even when the kernel does linearize related syscalls,
+require all rotlock-related syscalls to have some determined order,
+crushing any performance advantage of multi-core systems without
+benefit. Even when the kernel does linearize related syscalls,
 user-space cannot determine the order between two unrelated syscalls
-(unless the user-space program has sufficient knowledge on the whole
+(unless the user-space program has sufficient knowledge of the whole
 system and hence can predict how the kernel schedules tasks).
 
 Our implementation does also behave that if a syscall has returned,
@@ -160,7 +160,7 @@ the next syscall will have already seen the effects from the previous
 syscall (by synchronously updating the rotlock states). For example,
 if a program has called `rotation_unlock` from some thread and has
 already returned, our implementation behaves as if all possible
-rotlock state updates that could have happened from the unlock has
+rotlock state updates that could have happened from the unlock have
 already happened. This means that a sequence of non-overlapping
 syscalls starting from the same state will have deterministic behavior
 in our implementation. However, this is strictly additional behavior
@@ -173,10 +173,10 @@ the specification.
 
 While waiting in the blocking `rotation_lock` syscall, the kernel
 cannot hold a lock while sleeping as it will deadlock. Hence each time
-the task wakes up, the syscall must lock each time to access its own
-rotlock’s state; to prevent excessive blocking, we implemented a
+the task wakes up, the syscall must lock each time to access its
+rotlock state; to prevent excessive blocking, we implemented a
 fine-grained locking system with each rotlock having a spinlock to
-protect its own mutable state.
+protect its mutable state.
 
 Using per-rotlock spinlocks allows checking state in `rotation_lock`
 much lightweight at a small performance cost in `update_rotlocks`.
@@ -195,7 +195,7 @@ optimized with a more careful data structure design to store the
 rotlocks. Sorting the rotlock list or having a separate list of
 activated rotlocks, maintaining a separate cache indexed by
 orientation to quickly check if specific ranges are locked or not were
-considered but was not implemented due to the lack of time.
+considered but were not implemented due to the lack of time.
 
 #### Interruptible, restartable syscalls
 
