@@ -209,3 +209,10 @@ Additionally, by returning `-ESYSRESTART`, we could have also
 automatically restarted the syscall. Unfortunately, we did not check
 correctness rigorously enough for the above solution; we did not
 implement this specific feature due to correctness concerns.
+
+## Lessons
+
+- Fine-grained locking is complicated to implement
+- Global reasoning of asynchronous logic is hard
+- The order of locks REALLY matters
+- All night coding is harmful
