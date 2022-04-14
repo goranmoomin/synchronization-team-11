@@ -10,6 +10,9 @@ The test programs in the `test` directory must be compiled with
 `aarch64-linux-gnu-gcc` with the `-static` option, as we have
 implemented the syscalls as 64-bit only.
 
+When testing, the command `echo 5 > /proc/sys/kernel/printk` can be
+used to suppress superfluous logs.
+
 ## Implementation overview
 
 The following files were modified:
